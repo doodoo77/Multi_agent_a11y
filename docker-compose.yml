@@ -1,0 +1,73 @@
+services:
+  redis:
+    image: redis:7-alpine
+    command:
+    - redis-server
+    - --appendonly
+    - 'no'
+    ports:
+    - 6379:6379
+  playwright_mcp:
+    image: mcr.microsoft.com/playwright/mcp:latest
+    command:
+      [
+        "--port", "8931",
+        "--host", "0.0.0.0",
+        "--allowed-hosts", "*",
+        "--headless"
+      ]
+    ports:
+    - 8931:8931
+    shm_size: 1gb
+  user_agent:
+    build:
+      context: .
+      dockerfile: user_agent/Dockerfile
+    environment:
+      MCP_URL: http://playwright_mcp:8931/mcp
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      REDIS_STREAM: a11y:issues
+      OUT_DIR: /shared/out
+      STEPS: '50'
+      MAX_EVIDENCE: '30'
+      SHARED_DIR: /shared
+    volumes:
+    - shared-data:/shared
+    depends_on:
+    - redis
+    - playwright_mcp
+    env_file:
+    - .env
+  expert_agent:
+    build:
+      context: ./expert_agent/api
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      REDIS_STREAM: a11y:issues
+      REDIS_GROUP: expert
+      REDIS_CONSUMER: expert-1
+      SHARED_DIR: /shared
+      CHROMA_DIR: /app/chroma
+      DOCS_DIR: /app/docs
+      GPT_MODEL: gpt-5.2
+      GPT_REASONING_EFFORT: xhigh
+      RAG_K_TEXT_EACH: '6'
+      RAG_K_IMAGE: '8'
+      RAG_CTX_IMAGES: '3'
+      RAG_HISTORY_PAGES: '5'
+      CHROMA_ASSETS_DIR: /app/chroma_assets
+    volumes:
+    - shared-data:/shared
+    - expert-chroma:/app/chroma
+    - ./expert_agent/api/docs:/app/docs:ro
+    - expert-assets:/app/chroma_assets
+    depends_on:
+    - redis
+    env_file:
+    - .env
+volumes:
+  shared-data: null
+  expert-chroma: null
+  expert-assets: null
